@@ -1,0 +1,167 @@
+library(tidyverse)
+library(dplyr)
+library(rsample)
+library(randomForest)
+library(janitor)
+library(rpart)
+library(rpart.plot)
+library(gbm)
+library(glmnet)
+library(tree)
+library(RColorBrewer)
+library(gridExtra)
+library(ggplot2)
+library(pls)
+library(jtools)
+library(magrittr) 
+library(tidyverse)
+library(ggplot2)
+library(GGally) 
+library(MASS)
+library(gridExtra)
+library(caret) 
+library(vcd) 
+library(scales)
+library(repr)
+dataset:
+data <- read_excel("C:/Users/admin/Downloads/rahul/data.xlsx")
+View(data)
+head(data)
+data <- subset(data, select = -c(1))
+head(data)
+dim(data)
+data <- distinct(data)
+data <- distinct(data)
+dim(data)
+data$clarity_ord[data$clarity=="I1"]<-1
+data$clarity_ord[data$clarity=="SI2"]<-2
+data$clarity_ord[data$clarity=="SI1"]<-3
+data$clarity_ord[data$clarity=="VS2"]<-4
+data$clarity_ord[data$clarity=="VS1"]<-5
+data$clarity_ord[data$clarity=="VVS2"]<-6
+data$clarity_ord[data$clarity=="VVS1"]<-7
+data$clarity_ord[data$clarity=="IF"]<-8
+data$color_ord[data$color=="J"]<-1
+data$color_ord[data$color=="I"]<-2
+data$color_ord[data$color=="H"]<-3
+data$color_ord[data$color=="G"]<-4
+data$color_ord[data$color=="F"]<-5
+data$color_ord[data$color=="E"]<-6
+data$color_ord[data$color=="D"]<-7
+data$cut_ord[data$cut=="Fair"]<-1
+data$cut_ord[data$cut=="Good"]<-2
+data$cut_ord[data$cut=="Very Good"]<-3
+data$cut_ord[data$cut=="Premium"]<-4
+data$cut_ord[data$cut=="Ideal"]<-5
+dummy <- dummyVars(" ~ .", data = data)
+newdata <- data.frame(predict(dummy, newdata = data))
+head(newdata)
+newdata <- subset(newdata, select = -c(clarity_ord, color_ord, cut_ord))
+head(newdata)
+colnames(newdata)
+Split data into training and testing sets:
+set.seed(11)
+data.split <- initial_split(newdata, prop = 3/4)
+train <- training(data.split)
+test <- testing(data.split)
+rsquared <- function(pred){
+ if (length(pred)==length(test$price))
+{
+ r2 = 1 - (sum((test$price-pred)^2)/sum((test$price-mean(test$price))^2))
+}
+ if (length(pred)==length(train$price))
+{
+ r2 = 1 - (sum((train$price-pred)^2)/sum((train$price-mean(train$price))^2))}
+ return (r2)
+}
+MSE <- function(pred)
+{
+ if (length(pred)==length(test$price))
+ {mse = sum((test$price-pred)^2)/length(test$price)
+}
+ if (length(pred)==length(train$price))
+ {
+mse = sum((train$price-pred)^2)/length(train$price)}
+ return (mse)
+}
+Forward Selection:
+linear.fwd <- step(lm(price ~., data=train), direction = c("forward"))
+fwd.pred.train = predict(linear.fwd, train)
+mse.fwd.train = MSE(fwd.pred.train)
+r2.fwd.train = rsquared(fwd.pred.train)
+fwd.pred.test = predict(linear.fwd, test)
+fwd.pred.test = predict(linear.fwd, test)
+mse.fwd.test = MSE(fwd.pred.test)
+r2.fwd.test = rsquared(fwd.pred.test)
+summary(linear.fwd)
+Backward Selection:
+linear.bwd = step(lm(price ~., data=train), direction = c("backward"))
+bwd.pred.train = predict(linear.bwd, train)
+mse.bwd.train = MSE(bwd.pred.train)
+r2.bwd.train = rsquared(bwd.pred.train)
+bwd.pred.test = predict(linear.bwd, test)
+mse.bwd.test = MSE(bwd.pred.test)
+r2.bwd.test = rsquared(bwd.pred.test)
+summary(linear.bwd)
+grid = 10^seq(10, -2, length=100)
+xtrain = model.matrix(price ~.,train)[,-1]
+ytrain = train$price
+xtest = model.matrix(price ~.,test)[,-1]
+ytest = test$price
+cv.ridge.out = cv.glmnet(xtrain, ytrain, alpha=0)
+bestlam.ridge = cv.ridge.out$lambda.min
+i <- which(cv.ridge.out$lambda == cv.ridge.out$lambda.min)
+mse.min.ridge <- cv.ridge.out$cvm[i]
+ridge.model = glmnet(xtrain, ytrain, alpha=0, lambda=bestlam.ridge)
+ridge.pred.train = predict(ridge.model, newx=xtrain)
+mse.ridge.train = MSE(ridge.pred.train)
+r2.ridge.train = rsquared(ridge.pred.train)
+ridge.pred.test = predict(ridge.model, newx=xtest)
+mse.ridge.test = MSE(ridge.pred.test)
+r2.ridge.test = rsquared(ridge.pred.test)
+cv.lasso.out = cv.glmnet(xtrain, ytrain, alpha=1)
+bestlam.lasso = cv.lasso.out$lambda.min
+i <- which(cv.lasso.out$lambda == cv.lasso.out$lambda.min)
+mse.min.lasso <- cv.lasso.out$cvm[i]
+lasso.model = glmnet(xtrain, ytrain, alpha=1, lambda=bestlam.lasso)
+lasso.pred.train = predict(lasso.model, newx=xtrain)
+mse.lasso.train = MSE(lasso.pred.train)
+r2.lasso.train = rsquared(lasso.pred.train)
+lasso.pred.test = predict(lasso.model, newx=xtest)
+mse.lasso.test = MSE(lasso.pred.test)
+r2.lasso.test = rsquared(lasso.pred.test)
+s1 <- ggplot(mapping = aes(x=log(cv.ridge.out$lambda), y=cv.ridge.out$cvm)) +
+ geom_point() +
+ geom_point(aes(x=log(bestlam.ridge), y=mse.min.ridge, color="blue", size = 2), show.legend = FALSE, 
+color="blue") +
+ geom_errorbar(aes(ymin=cv.ridge.out$cvm-cv.ridge.out$cvsd, ymax=cv.ridge.out$cvm+cv.ridge.out$cvsd), 
+color="gray") +
+ xlab("Log(lambda)") +
+ ylab("Mean Squared Error") +
+ labs(title = "Optimal Lambda for Ridge Regression", subtitle = paste("Best Lambda: ", bestlam.ridge)) +
+ theme_classic()
+s2 <- ggplot(mapping = aes(x=log(cv.lasso.out$lambda), y=cv.lasso.out$cvm)) +
+ geom_point() +
+ geom_point(aes(x=log(bestlam.lasso), y=mse.min.lasso, size = 2), show.legend = FALSE, color="red") +
+ geom_errorbar(aes(ymin=cv.lasso.out$cvm-cv.lasso.out$cvsd, ymax=cv.lasso.out$cvm+cv.lasso.out$cvsd), 
+color="gray") +
+ xlab("Log(lambda)") +
+ ylab("Mean Squared Error") +
+ labs(title = "Optimal Lambda for Lasso Regression", subtitle = paste("Best Lambda: ", bestlam.lasso)) +
+ theme_classic()
+grid.arrange(s1, s2, nrow=2)
+ridge.coef <- rownames_to_column(data.frame(coef(ridge.model)[,1]), var = "Variable") %>%
+rename(Coefficient = coef.ridge.model....1.)
+ridge.coef <- ridge.coef %>%
+ filter(Variable != "(Intercept)") %>%
+ arrange(desc(abs(Coefficient)))
+lasso.coef <- rownames_to_column(data.frame(coef(lasso.model)[,1]), var = "Variable") %>%
+ rename(Coefficient = coef.lasso.model....1.)
+lasso.coef <- lasso.coef %>%
+ filter(Variable != "(Intercept)") %>%
+ arrange(desc(abs(Coefficient)))
+coef.compare <- lasso.coef %>%
+ left_join(ridge.coef, by = "Variable") %>%
+ rename("Lasso Coefficient" = Coefficient.x) %>%
+ rename("Ridge Coefficient" = Coefficient.y)
+coef.compare
